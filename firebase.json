@@ -1,0 +1,34 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "ai-real-time-voice-to-sign",
+          "appId": "1:305294479713:android:6e0caf8f4d559c957f7520",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "ai-real-time-voice-to-sign",
+          "configurations": {
+            "android": "1:305294479713:android:6e0caf8f4d559c957f7520",
+            "ios": "1:305294479713:ios:d3a94f570cc35d6b7f7520",
+            "macos": "1:305294479713:ios:d3a94f570cc35d6b7f7520",
+            "web": "1:305294479713:web:0d45cffb0b9be5947f7520",
+            "windows": "1:305294479713:web:2f1d53fd6602916a7f7520"
+          }
+        }
+      }
+    }
+  },
+  "emulators": {
+    "singleProjectMode": true,
+    "auth": {
+      "port": 9099
+    },
+    "ui": {
+      "enabled": true
+    }
+  }
+}
