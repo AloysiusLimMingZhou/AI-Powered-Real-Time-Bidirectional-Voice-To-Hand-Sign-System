@@ -28,6 +28,6 @@ Steps to Use This Project
 1. Clone the repository
     - git clone https://github.com/AloysiusLimMingZhou/AI-Powered-Real-Time-Bidirectional-Voice-To-Hand-Sign-System.git
 2. Run flutter pub get
-3. Run flutterfire configure
-4. Run firebase login
+3. Run firebase login
+4. Run flutterfire configure
 5. Run flutter run
