@@ -3,14 +3,31 @@
 A new Flutter project.
 
 ## Getting Started
+Steps to Use This Project
+- Prerequisites
+    - Flutter SDK installed
+    - Android Studio installed
+    - Github Personal Access Token Created (If no go to github -> settings -> Developer settings -> Personal access tokens -> Generate new token)
+    - Firebase CLI installed (npm install -g firebase-tools) (If no go to https://firebase.google.com/docs/cli#install_the_firebase_cli)
 
-This project is a starting point for a Flutter application.
+- Android SDK Prerequisites (Go to Android Studio -> Settings -> Languages & Frameworks -> Android SDK)
+    a. SDK Platforms:
+    - Android SDK Platform: Android 16.0 ("Baklava") (API 36)
 
-A few resources to get you started if this is your first Flutter project:
+    b. SDK Tools:
+    - Android SDK Build-Tools: Android SDK Build-Tools 36.1
+    - Android SDK Command-line Tools (latest)
+    - CMake
+    - Android Emulator (Version 36.3.10)
+    - Android Emulator hypervisor driver (installer) (Version 2.2.0)
+    - Android SDK Platform-Tools (Version 36.0.2)
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+    c. SDK Location:
+    - Android SDK Location: C:\Users\aloys\AppData\Local\Android\Sdk
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+1. Clone the repository
+    - git clone https://github.com/AloysiusLimMingZhou/AI-Powered-Real-Time-Bidirectional-Voice-To-Hand-Sign-System.git
+2. Run flutter pub get
+3. Run flutterfire configure
+4. Run firebase login
+5. Run flutter run
