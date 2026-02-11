@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:ai_voice_to_hand_signs_project/data/services/database_service.dart';
 import 'package:ai_voice_to_hand_signs_project/features/auth/screens/login/login.dart';
 import 'package:ai_voice_to_hand_signs_project/features/dashboard/dashboard.dart';
 
@@ -22,10 +23,18 @@ class AuthRepositories extends GetxController {
   }
 
   // Function to determine relevant screen and redirect accordingly
-  void _setInitialScreen(User? user) {
-    user == null
-        ? Get.offAll(() => const LoginScreen())
-        : Get.offAll(() => const DashboardScreen());
+  void _setInitialScreen(User? user) async {
+    if (user == null) {
+      Get.offAll(() => const LoginScreen());
+    } else {
+      // Save/update user profile in RTDB on login
+      try {
+        await Get.find<DatabaseService>().saveUserProfile(user);
+      } catch (e) {
+        print('Failed to save user profile: $e');
+      }
+      Get.offAll(() => const DashboardScreen());
+    }
   }
 
   /* ---------------------------- Federated identity & Social Sign In ---------------------------- */

@@ -20,6 +20,10 @@ dependencies:
   # Google Firebase
   firebase_core: ^4.4.0
   firebase_auth: ^6.1.4
+  firebase_database: ^12.1.3
+  firebase_storage: ^13.0.6
+  cloud_functions: ^6.0.6
+  firebase_app_check: ^0.4.1+4
   google_sign_in: ^7.2.0
   permission_handler: ^12.0.1
   
@@ -47,7 +51,6 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
-    - assets/sign_language_model.tflite
     - assets/label_map.json
 
   # ---------------- Local Fonts ----------------

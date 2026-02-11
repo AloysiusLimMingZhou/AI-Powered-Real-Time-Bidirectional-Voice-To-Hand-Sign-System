@@ -3,8 +3,10 @@ import 'package:get/get.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 import '../../../util/constants/colors.dart';
+import '../../../data/services/cloud_functions_service.dart';
 import '../controllers/sign_to_voice_controller.dart';
 import '../widgets/native_sign_language_camera.dart';
+import '../widgets/emotion_indicator.dart';
 
 class SignToVoiceScreen extends StatelessWidget {
   const SignToVoiceScreen({super.key});
@@ -41,6 +43,52 @@ class SignToVoiceScreen extends StatelessWidget {
         children: [
           // Camera Preview Section
           Expanded(flex: 3, child: Obx(() => _buildCameraPreview(controller))),
+
+          ElevatedButton(
+            onPressed: () async {
+              final cfService = Get.find<CloudFunctionsService>();
+
+              try {
+                // Test glossToSentence
+                final sentence = await cfService.glossToSentence([
+                  "HELLO",
+                  "HOW",
+                  "YOU",
+                ], lang: "en");
+                print("✅ glossToSentence: $sentence");
+
+                // Test sentenceToGloss
+                final gloss = await cfService.sentenceToGloss(
+                  "How are you doing today?",
+                  lang: "en",
+                );
+                print("✅ sentenceToGloss: $gloss");
+
+                // Test translate
+                final translated = await cfService.translateText(
+                  "Hello, how are you?",
+                  targetLang: "ms",
+                );
+                print("✅ translateText: $translated");
+
+                Get.snackbar("Success", "All functions working!");
+              } catch (e) {
+                print("❌ Error: $e");
+                Get.snackbar("Error", e.toString());
+              }
+            },
+            child: Text("Test Cloud Functions"),
+          ),
+          // Emotion Detection Indicator
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Obx(
+              () => EmotionIndicator(
+                emotionData: controller.currentEmotion.value,
+                isRecording: controller.isRecording.value,
+              ),
+            ),
+          ),
 
           // Current Detection Display
           Obx(() => _buildCurrentDetection(controller)),

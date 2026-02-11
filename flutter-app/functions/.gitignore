@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build output
+lib/
+
+# Local env files
+.env
+.env.local
+
+# Debug logs
+firebase-debug.log
+firebase-debug.*.log
+*.local
+
+# IDE
+.idea/
+.vscode/

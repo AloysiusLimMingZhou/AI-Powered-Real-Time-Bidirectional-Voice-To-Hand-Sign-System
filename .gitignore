@@ -29,3 +29,40 @@ credentials.json
 
 # Datasets (too large for Git)
 sign_language_dataset/
+
+# Firebase Service Account Keys (CRITICAL - NEVER COMMIT)
+**/serviceAccountKey.json
+**/*-firebase-adminsdk-*.json
+**/service-account-*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+ENV/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Training outputs
+checkpoints/
+saved_models/
+logs/
+runs/
+wandb/
+
+# Data files
+*.npy
+*.npz
+*.csv
+*.pkl
+*.pickle
+data/
+raw_data/
+processed_data/

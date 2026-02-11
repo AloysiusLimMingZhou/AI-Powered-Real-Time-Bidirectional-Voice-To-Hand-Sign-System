@@ -48,6 +48,14 @@ pubspec.lock
 lib/generated_plugin_registrant.dart
 lib/firebase_options.dart
 
+# Generated plugin files (all platforms)
+**/GeneratedPluginRegistrant.swift
+**/GeneratedPluginRegistrant.java
+**/GeneratedPluginRegistrant.m
+**/generated_plugin_registrant.cc
+**/generated_plugin_registrant.h
+**/generated_plugins.cmake
+
 # Symbolication related
 app.*.symbols
 
@@ -78,3 +86,35 @@ pubsub-debug.log
 
 # Crash dumps / native symbols
 *.dSYM
+
+# Firebase Service Account Keys (CRITICAL - NEVER COMMIT)
+**/serviceAccountKey.json
+**/*-firebase-adminsdk-*.json
+**/service-account-*.json
+
+# Firebase Emulator Data
+.firebase/
+firebase-export-*/
+ui-debug.log
+
+# Local Firebase config overrides
+.firebaserc.local
+firebase.json.local
+
+# Python virtual environments (for AI training)
+venv/
+env/
+.venv/
+__pycache__/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# Local test data
+test-data/
+temp/
+tmp/
+
+# Others
+database.rules.json
+storage.rules
