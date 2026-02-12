@@ -3,7 +3,6 @@ import 'package:get/get.dart';
 import 'package:iconsax_flutter/iconsax_flutter.dart';
 
 import '../../../util/constants/colors.dart';
-import '../../../data/services/cloud_functions_service.dart';
 import '../controllers/sign_to_voice_controller.dart';
 import '../widgets/native_sign_language_camera.dart';
 import '../widgets/emotion_indicator.dart';
@@ -44,41 +43,6 @@ class SignToVoiceScreen extends StatelessWidget {
           // Camera Preview Section
           Expanded(flex: 3, child: Obx(() => _buildCameraPreview(controller))),
 
-          ElevatedButton(
-            onPressed: () async {
-              final cfService = Get.find<CloudFunctionsService>();
-
-              try {
-                // Test glossToSentence
-                final sentence = await cfService.glossToSentence([
-                  "HELLO",
-                  "HOW",
-                  "YOU",
-                ], lang: "en");
-                print("✅ glossToSentence: $sentence");
-
-                // Test sentenceToGloss
-                final gloss = await cfService.sentenceToGloss(
-                  "How are you doing today?",
-                  lang: "en",
-                );
-                print("✅ sentenceToGloss: $gloss");
-
-                // Test translate
-                final translated = await cfService.translateText(
-                  "Hello, how are you?",
-                  targetLang: "ms",
-                );
-                print("✅ translateText: $translated");
-
-                Get.snackbar("Success", "All functions working!");
-              } catch (e) {
-                print("❌ Error: $e");
-                Get.snackbar("Error", e.toString());
-              }
-            },
-            child: Text("Test Cloud Functions"),
-          ),
           // Emotion Detection Indicator
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -108,9 +72,6 @@ class SignToVoiceScreen extends StatelessWidget {
       return _buildErrorState(controller.errorMessage.value);
     }
 
-    // Native Camera is always "initialized" once mounted, but we can check if permissions etc.
-    // Ideally the native view handles its own loading state or we just show it.
-
     return Container(
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -136,8 +97,13 @@ class SignToVoiceScreen extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Native Camera View
-            NativeSignLanguageCamera(onResult: controller.onResult),
+            // Native Camera View — with both sign + emotion callbacks
+            NativeSignLanguageCamera(
+              onResult: controller.onResult,
+              onEmotionResult: (label, score) {
+                controller.onEmotionDetected(label, score);
+              },
+            ),
 
             // Recording indicator
             if (controller.isRecording.value)
@@ -346,23 +312,50 @@ class SignToVoiceScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          // Sentence preview
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: TColors.grey.withAlpha(100),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              controller.getSentence(),
-              style: const TextStyle(
-                color: TColors.textPrimary,
-                fontSize: 16,
-                fontStyle: FontStyle.italic,
+          // Sentence preview — shows AI sentence if available
+          Obx(() {
+            final displayText = controller.aiSentence.value.isNotEmpty
+                ? controller.aiSentence.value
+                : controller.getSentence();
+            final isAI = controller.aiSentence.value.isNotEmpty;
+
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isAI
+                    ? TColors.primary.withAlpha(30)
+                    : TColors.grey.withAlpha(100),
+                borderRadius: BorderRadius.circular(12),
+                border: isAI
+                    ? Border.all(color: TColors.primary.withAlpha(80))
+                    : null,
               ),
-            ),
-          ),
+              child: Row(
+                children: [
+                  if (isAI) ...[
+                    const Icon(
+                      Iconsax.magic_star,
+                      size: 16,
+                      color: TColors.primary,
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    child: Text(
+                      displayText,
+                      style: TextStyle(
+                        color: TColors.textPrimary,
+                        fontSize: 16,
+                        fontStyle: isAI ? FontStyle.normal : FontStyle.italic,
+                        fontWeight: isAI ? FontWeight.w500 : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
         ],
       ),
     );
@@ -389,8 +382,6 @@ class SignToVoiceScreen extends StatelessWidget {
   }
 
   Widget _buildMainButton(SignToVoiceController controller) {
-    // Determine button state based on recording
-    // With native camera, it's always "on", but logic flags determine if we process data.
     final isRecording = controller.isRecording.value;
 
     return GestureDetector(
@@ -422,32 +413,36 @@ class SignToVoiceScreen extends StatelessWidget {
   }
 
   Widget _buildSendButton(SignToVoiceController controller) {
+    final isSending = controller.isSending.value;
+
     return GestureDetector(
-      onTap: () {
-        // TODO: Send to Gemini API
-        Get.snackbar(
-          'Sending to AI',
-          controller.getSentence(),
-          backgroundColor: TColors.darkContainer,
-          colorText: TColors.textPrimary,
-          snackPosition: SnackPosition.TOP,
-        );
-      },
+      onTap: isSending ? null : controller.sendToAI,
       child: Container(
         width: 60,
         height: 60,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: TColors.success,
+          color: isSending ? TColors.grey : TColors.success,
           boxShadow: [
             BoxShadow(
-              color: TColors.success.withAlpha(100),
+              color: (isSending ? TColors.grey : TColors.success).withAlpha(
+                100,
+              ),
               blurRadius: 15,
               spreadRadius: 2,
             ),
           ],
         ),
-        child: const Icon(Iconsax.send_1, color: TColors.white, size: 24),
+        child: isSending
+            ? const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: TColors.white,
+                ),
+              )
+            : const Icon(Iconsax.send_1, color: TColors.white, size: 24),
       ),
     );
   }
@@ -468,9 +463,9 @@ class SignToVoiceScreen extends StatelessWidget {
             children: [
               const Icon(Iconsax.warning_2, size: 48, color: TColors.error),
               const SizedBox(height: 16),
-              Text(
+              const Text(
                 'Error',
-                style: const TextStyle(
+                style: TextStyle(
                   color: TColors.error,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,

@@ -2,6 +2,9 @@
  * textToSpeech — HTTPS Callable
  * Takes text and uses Google Cloud Text-to-Speech
  * to generate speech audio, returned as base64.
+ *
+ * Optionally accepts an `emotion` parameter to adjust
+ * speaking rate and pitch for emotion-aware speech output.
  */
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import textToSpeechLib from "@google-cloud/text-to-speech";
@@ -26,6 +29,16 @@ const VOICE_MAP: Record<string, { name: string; languageCode: string }> = {
     "fr": { name: "fr-FR-Neural2-A", languageCode: "fr-FR" },
 };
 
+// Emotion → TTS audio config adjustments
+const EMOTION_AUDIO_CONFIG: Record<string, { speakingRate: number; pitch: number }> = {
+    "happy": { speakingRate: 1.15, pitch: 2.0 },
+    "angry": { speakingRate: 1.10, pitch: -3.0 },
+    "down": { speakingRate: 0.85, pitch: -2.0 },
+    "confused": { speakingRate: 0.95, pitch: 1.0 },
+    "questioning": { speakingRate: 1.05, pitch: 3.0 },
+    "neutral": { speakingRate: 1.00, pitch: 0.0 },
+};
+
 export const textToSpeech = onCall(
     { region: LOCATION, memory: "512MiB", timeoutSeconds: 60 },
     async (request) => {
@@ -33,9 +46,10 @@ export const textToSpeech = onCall(
             throw new HttpsError("unauthenticated", "User must be authenticated.");
         }
 
-        const { text, lang } = request.data as {
+        const { text, lang, emotion } = request.data as {
             text: string;
             lang?: string;
+            emotion?: string;
         };
 
         if (!text || typeof text !== "string" || text.trim() === "") {
@@ -46,6 +60,10 @@ export const textToSpeech = onCall(
         }
 
         const language = lang || "en";
+
+        // Get emotion audio adjustments (default to neutral)
+        const audioTune = EMOTION_AUDIO_CONFIG[emotion || "neutral"]
+            || EMOTION_AUDIO_CONFIG["neutral"];
 
         try {
             const client = new textToSpeechLib.TextToSpeechClient();
@@ -61,8 +79,8 @@ export const textToSpeech = onCall(
                 },
                 audioConfig: {
                     audioEncoding: "MP3",
-                    speakingRate: 1.0,
-                    pitch: 0.0,
+                    speakingRate: audioTune.speakingRate,
+                    pitch: audioTune.pitch,
                 },
             });
 
@@ -71,7 +89,9 @@ export const textToSpeech = onCall(
             ).toString("base64");
 
             console.log(
-                `textToSpeech [${language}]: "${text.substring(0, 50)}..." → ${audioBase64.length} bytes`
+                `textToSpeech [${language}] (emotion: ${emotion || "neutral"}, ` +
+                `rate: ${audioTune.speakingRate}, pitch: ${audioTune.pitch}): ` +
+                `"${text.substring(0, 50)}..." → ${audioBase64.length} bytes`
             );
 
             return { audioBase64, contentType: "audio/mp3" };

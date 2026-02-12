@@ -37,9 +37,7 @@ class SignLanguageAnalyzer(
     
     // Labels from label_map.json - 29 classes matching trained model
     private val labels = listOf(
-        "a", "b", "c", "d", "e", "f", "g", "h", "have", "I",
-        "j", "k", "l", "m", "n", "o", "p", "q", "question", "r",
-        "s", "t", "Teacher", "u", "v", "w", "x", "y", "z"
+        "Teacher", "I", "have", "question", "a"
     )
 
     init {
@@ -94,15 +92,7 @@ class SignLanguageAnalyzer(
             return
         }
 
-        val timestamp = SystemClock.uptimeMillis()
-        
-        // Convert ImageProxy to MPImage
-        // Note: This is simplified. For rotation handling, might need more logic.
-        // Assuming sensor rotation is handled by CameraX or we pass it here.
         val bitmap = imageProxy.toBitmap()
-        
-        // Handle rotation if needed. For now assuming portrait/upright.
-        // Ideally we should adhere to imageProxy.imageInfo.rotationDegrees
         val rotationDegrees = imageProxy.imageInfo.rotationDegrees
         val rotatedBitmap = if (rotationDegrees != 0) {
             rotateBitmap(bitmap, rotationDegrees.toFloat())
@@ -110,14 +100,21 @@ class SignLanguageAnalyzer(
             bitmap
         }
 
-        val mpImage = BitmapImageBuilder(rotatedBitmap).build()
-
-        // Run MediaPipe
-        val result = handLandmarker?.detect(mpImage)
-        
-        processResult(result)
-
+        analyzeFromBitmap(rotatedBitmap)
         imageProxy.close()
+    }
+
+    /**
+     * Public method to analyze a pre-rotated Bitmap.
+     * Used by NativeCameraView's dual-analyzer to share one frame
+     * between sign detection and emotion detection.
+     */
+    fun analyzeFromBitmap(bitmap: Bitmap) {
+        if (handLandmarker == null || tflite == null) return
+
+        val mpImage = BitmapImageBuilder(bitmap).build()
+        val result = handLandmarker?.detect(mpImage)
+        processResult(result)
     }
     
     private fun rotateBitmap(source: Bitmap, angle: Float): Bitmap {
@@ -139,10 +136,8 @@ class SignLanguageAnalyzer(
             // Add to buffer
             updateBuffer(normalized)
             
-            // Run inference if buffer is full
-            if (frameBuffer.size == WINDOW_SIZE) {
-                runInference()
-            }
+            // Run inference (it handles padding/throttling internally)
+            runInference()
         } else {
              // Handle no hand? Maybe clear buffer or replicate last?
              // For real-time, we typically just wait.
@@ -156,6 +151,10 @@ class SignLanguageAnalyzer(
              updateBuffer(zeros)
              
              if (frameBuffer.size == WINDOW_SIZE) {
+                 // Optional: Keep forcing inference even if buffer is full of zeros
+                 runInference()
+             } else {
+                 // Also run inference if we are padding
                  runInference()
              }
         }
@@ -197,6 +196,8 @@ class SignLanguageAnalyzer(
                 flattener[i] /= maxDist
             }
         }
+        // If maxDist is 0, we return the centered coordinates (which are all 0 if all points are at wrist, or just unscaled)
+        // This matches Python: if hand_size > 0: normalized = centered / hand_size else: normalized = centered
         
         return flattener
     }
@@ -209,7 +210,7 @@ class SignLanguageAnalyzer(
     }
     
     private var inferenceCounter = 0
-    private val INFERENCE_INTERVAL = 10 // Run every 10 frames for faster response
+    private val INFERENCE_INTERVAL = 5 // Run every 5 frames for faster response
     private var lastPredictedLabel: String? = null
     private var lastPredictionTime: Long = 0
     
@@ -223,8 +224,19 @@ class SignLanguageAnalyzer(
         // Prepare input: dimensions [1, 60, 63]
         val input = Array(1) { Array(WINDOW_SIZE) { FloatArray(NUM_FEATURES) } }
         
-        for (i in 0 until WINDOW_SIZE) {
-            input[0][i] = frameBuffer[i]
+        // Fill input with buffer data, padding with zeros if needed
+        // If buffer has N frames (where N < 60), we pad 60-N frames of zeros at the start
+        val currentSize = frameBuffer.size
+        val paddingNeeded = WINDOW_SIZE - currentSize
+        
+        // Add padding (zeros)
+        for (i in 0 until paddingNeeded) {
+             input[0][i] = FloatArray(NUM_FEATURES) { 0f }
+        }
+        
+        // Add actual data
+        for (i in 0 until currentSize) {
+            input[0][paddingNeeded + i] = frameBuffer[i]
         }
         
         // Prepare output: [1, num_classes]
@@ -247,16 +259,15 @@ class SignLanguageAnalyzer(
         val maxIndex = indexedPreds[0].first
         val maxScore = indexedPreds[0].second
         
-        if (maxScore > 0.5f) { // Threshold
-             val label = labels[maxIndex]
-             val currentTime = SystemClock.uptimeMillis()
-             
-             // Debounce: only send if different from last prediction or 1 second has passed
-             if (label != lastPredictedLabel || currentTime - lastPredictionTime > 1000) {
-                 onResult(label, maxScore)
-                 lastPredictedLabel = label
-                 lastPredictionTime = currentTime
-             }
-        }
+        // Send prediction immediately (no threshold)
+         val label = labels[maxIndex]
+         val currentTime = SystemClock.uptimeMillis()
+         
+         // Debounce: only send if different from last prediction or 1 second has passed
+         if (label != lastPredictedLabel || currentTime - lastPredictionTime > 1000) {
+             onResult(label, maxScore)
+             lastPredictedLabel = label
+             lastPredictionTime = currentTime
+         }
     }
 }

@@ -63,6 +63,5 @@ wandb/
 *.csv
 *.pkl
 *.pickle
-data/
 raw_data/
 processed_data/

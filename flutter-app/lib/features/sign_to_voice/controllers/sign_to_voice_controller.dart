@@ -1,7 +1,12 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 import 'package:logger/logger.dart';
 import 'package:ai_voice_to_hand_signs_project/data/services/database_service.dart';
+import 'package:ai_voice_to_hand_signs_project/data/services/cloud_functions_service.dart';
 import 'package:ai_voice_to_hand_signs_project/data/models/session.dart';
 import 'package:ai_voice_to_hand_signs_project/data/models/transcript_entry.dart';
 import 'package:ai_voice_to_hand_signs_project/data/models/emotion_data.dart';
@@ -11,15 +16,18 @@ import 'package:ai_voice_to_hand_signs_project/data/models/emotion_data.dart';
 class SignToVoiceController extends GetxController {
   final Logger _logger = Logger();
   final DatabaseService _dbService = Get.find<DatabaseService>();
+  final CloudFunctionsService _cfService = Get.find<CloudFunctionsService>();
 
   // Observable state
-  final RxBool isInitialized = true.obs; // Native view initializes itself
+  final RxBool isInitialized = true.obs;
   final RxBool isRecording = false.obs;
   final RxBool isProcessing = false.obs;
+  final RxBool isSending = false.obs; // AI pipeline active
   final RxString currentWord = ''.obs;
   final RxDouble confidence = 0.0.obs;
   final RxList<String> detectedWords = <String>[].obs;
   final RxString errorMessage = ''.obs;
+  final RxString aiSentence = ''.obs; // Gemini-polished sentence
 
   // Emotion detection state
   final Rx<EmotionData?> currentEmotion = Rx<EmotionData?>(null);
@@ -28,6 +36,9 @@ class SignToVoiceController extends GetxController {
   // Session management
   String? _currentSessionId;
   String? get currentSessionId => _currentSessionId;
+
+  // Audio player for TTS
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   // Debounce/Logic control
   DateTime? _lastWordTime;
@@ -43,10 +54,10 @@ class SignToVoiceController extends GetxController {
 
   @override
   void onClose() {
-    // End session if still active
     if (_currentSessionId != null && isRecording.value) {
       stopRecording();
     }
+    _audioPlayer.dispose();
     super.onClose();
   }
 
@@ -56,10 +67,10 @@ class SignToVoiceController extends GetxController {
     currentWord.value = '';
     emotionHistory.clear();
     currentEmotion.value = null;
+    aiSentence.value = '';
     isRecording.value = true;
 
     try {
-      // Create a new session in RTDB
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         _currentSessionId = await _dbService.createSession(
@@ -82,7 +93,6 @@ class SignToVoiceController extends GetxController {
     currentWord.value = '';
 
     try {
-      // End session in RTDB
       if (_currentSessionId != null) {
         final user = FirebaseAuth.instance.currentUser;
         if (user != null) {
@@ -100,45 +110,41 @@ class SignToVoiceController extends GetxController {
   void onResult(String label, double score) {
     if (!isRecording.value) return;
 
-    // Update UI for current detection
     currentWord.value = label;
     confidence.value = score;
     isProcessing.value = true;
 
-    // Add to detected words if debounce passed and score is high enough
-    if (score > 0.6) {
-      final now = DateTime.now();
-      if (_lastWordTime == null ||
-          now.difference(_lastWordTime!) > wordDebounce) {
-        if (detectedWords.isEmpty || detectedWords.last != label) {
-          detectedWords.add(label);
-          _lastWordTime = now;
-          _logger.i('Detected: $label (${(score * 100).toStringAsFixed(1)}%)');
+    // if (score > 0.6) { // Removed threshold
+    final now = DateTime.now();
+    if (_lastWordTime == null ||
+        now.difference(_lastWordTime!) > wordDebounce) {
+      if (detectedWords.isEmpty || detectedWords.last != label) {
+        detectedWords.add(label);
+        _lastWordTime = now;
+        _logger.i('Detected: $label (${(score * 100).toStringAsFixed(1)}%)');
 
-          // Save to RTDB as transcript entry
-          _saveDetectedWord(label, score);
-        }
+        _saveDetectedWord(label, score);
       }
     }
+    // }
 
-    // Reset processing flag shortly
     Future.delayed(const Duration(milliseconds: 100), () {
       if (!isClosed) isProcessing.value = false;
     });
   }
 
-  /// Handle emotion detection result (to be called from camera/ML module)
-  void onEmotionDetected(EmotionType emotion, double confidence) {
+  /// Handle emotion detection result from Native Camera
+  void onEmotionDetected(String emotionLabel, double conf) {
     if (!isRecording.value) return;
 
     final now = DateTime.now();
 
-    // Debounce emotion updates
     if (_lastEmotionTime == null ||
         now.difference(_lastEmotionTime!) > emotionDebounce) {
+      final emotionType = _parseEmotionType(emotionLabel);
       final emotionData = EmotionData(
-        emotion: emotion,
-        confidence: confidence,
+        emotion: emotionType,
+        confidence: conf,
         timestamp: now.millisecondsSinceEpoch,
       );
 
@@ -147,11 +153,96 @@ class SignToVoiceController extends GetxController {
       _lastEmotionTime = now;
 
       _logger.i(
-        'Emotion detected: ${emotionData.label} (${(confidence * 100).toStringAsFixed(1)}%)',
+        'Emotion detected: ${emotionData.label} (${(conf * 100).toStringAsFixed(1)}%)',
       );
 
-      // Save emotion to RTDB
       _saveEmotionData(emotionData);
+    }
+  }
+
+  EmotionType _parseEmotionType(String label) {
+    switch (label.toLowerCase()) {
+      case 'happy':
+        return EmotionType.happy;
+      case 'angry':
+        return EmotionType.angry;
+      case 'down':
+      case 'sad':
+        return EmotionType.down;
+      case 'confused':
+        return EmotionType.confused;
+      case 'questioning':
+        return EmotionType.questioning;
+      default:
+        return EmotionType.neutral;
+    }
+  }
+
+  /// Send detected signs + emotion to AI pipeline
+  /// 1. glossToSentence (Gemini) — converts gloss words to natural sentence
+  /// 2. textToSpeech (Vertex TTS) — generates emotion-toned audio
+  /// 3. Play audio
+  Future<void> sendToAI() async {
+    if (detectedWords.isEmpty) return;
+    if (isSending.value) return;
+
+    isSending.value = true;
+    final emotion = getDominantEmotion()?.name ?? 'neutral';
+
+    try {
+      // Step 1: Convert gloss to natural sentence with emotion context
+      _logger.i(
+        'Sending to Gemini: ${detectedWords.join(" ")} [emotion: $emotion]',
+      );
+      final sentence = await _cfService.glossToSentence(
+        detectedWords.toList(),
+        lang: 'en',
+        emotion: emotion,
+      );
+      aiSentence.value = sentence;
+      _logger.i('Gemini response: "$sentence"');
+
+      // Save polished sentence to RTDB
+      if (_currentSessionId != null) {
+        final entry = TranscriptEntry(
+          type: TranscriptType.polishedText,
+          content: sentence,
+          timestamp: DateTime.now().millisecondsSinceEpoch,
+          speakerRole: SpeakerRole.deafUser,
+        );
+        await _dbService.addTranscriptEntry(_currentSessionId!, entry);
+      }
+
+      // Step 2: Text to Speech with emotion tone
+      _logger.i('Generating TTS with emotion: $emotion');
+      final audioBase64 = await _cfService.textToSpeech(
+        sentence,
+        lang: 'en',
+        emotion: emotion,
+      );
+
+      // Step 3: Play the audio
+      if (audioBase64.isNotEmpty) {
+        final bytes = base64Decode(audioBase64);
+        await _audioPlayer.play(BytesSource(Uint8List.fromList(bytes)));
+        _logger.i('Playing TTS audio (${bytes.length} bytes)');
+      }
+
+      Get.snackbar(
+        '🗣️ Speaking',
+        '$sentence ${currentEmotion.value?.emoji ?? ""}',
+        snackPosition: SnackPosition.TOP,
+        duration: const Duration(seconds: 3),
+      );
+    } catch (e) {
+      _logger.e('AI pipeline error: $e');
+      Get.snackbar(
+        'Error',
+        'Failed to process: ${e.toString()}',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isSending.value = false;
     }
   }
 
@@ -160,15 +251,19 @@ class SignToVoiceController extends GetxController {
     if (_currentSessionId == null) return;
 
     try {
+      final emotionTag = currentEmotion.value != null
+          ? ' [${currentEmotion.value!.label}]'
+          : '';
+
       final entry = TranscriptEntry(
         type: TranscriptType.rawGloss,
-        content: word,
+        content: '$word$emotionTag',
         timestamp: DateTime.now().millisecondsSinceEpoch,
         speakerRole: SpeakerRole.deafUser,
       );
 
       await _dbService.addTranscriptEntry(_currentSessionId!, entry);
-      _logger.d('Saved word to RTDB: $word');
+      _logger.d('Saved word to RTDB: $word$emotionTag');
     } catch (e) {
       _logger.e('Failed to save word to RTDB: $e');
     }
@@ -201,6 +296,7 @@ class SignToVoiceController extends GetxController {
     confidence.value = 0.0;
     emotionHistory.clear();
     currentEmotion.value = null;
+    aiSentence.value = '';
   }
 
   /// Get sentence from detected words
@@ -212,13 +308,11 @@ class SignToVoiceController extends GetxController {
   EmotionType? getDominantEmotion() {
     if (emotionHistory.isEmpty) return null;
 
-    // Count occurrences of each emotion
     final counts = <EmotionType, int>{};
     for (final emotion in emotionHistory) {
       counts[emotion.emotion] = (counts[emotion.emotion] ?? 0) + 1;
     }
 
-    // Find the most frequent
     EmotionType? dominant;
     int maxCount = 0;
     counts.forEach((emotion, count) {

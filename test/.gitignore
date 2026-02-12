@@ -1,0 +1,33 @@
+# Python virtual environment
+.venv
+venv/
+env/
+
+# Environment variables
+.env
+
+# Training outputs (large files)
+*.mp4
+*.keras
+*.h5
+*.tflite
+training_history.json
+best_model.*
+
+# Preprocessed data
+preprocessed/
+sign_language_dataset_simple/
+
+# Python cache
+__pycache__/
+/training/__pycache__
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

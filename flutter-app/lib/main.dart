@@ -24,9 +24,8 @@ Future<void> main() async {
   await FirebaseAppCheck.instance.activate(
     // Use Play Integrity for production (requires app to be on Play Store)
     // Use Debug provider for development/testing
-    androidProvider: kDebugMode
-        ? AndroidProvider.debug
-        : AndroidProvider.playIntegrity,
+    // TEMPORARY: Force debug provider for local release testing
+    androidProvider: AndroidProvider.debug,
   );
 
   // NOTE: Comment out emulator when testing on physical device

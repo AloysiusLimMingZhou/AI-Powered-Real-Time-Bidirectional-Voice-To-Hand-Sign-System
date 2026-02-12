@@ -87,16 +87,14 @@ class EmotionIndicator extends StatelessWidget {
     switch (emotion) {
       case EmotionType.happy:
         return const Color(0xFFFFC107); // Amber
-      case EmotionType.sad:
-        return const Color(0xFF2196F3); // Blue
       case EmotionType.angry:
         return const Color(0xFFF44336); // Red
-      case EmotionType.surprised:
+      case EmotionType.down:
+        return const Color(0xFF2196F3); // Blue
+      case EmotionType.confused:
+        return const Color(0xFFFF9800); // Orange
+      case EmotionType.questioning:
         return const Color(0xFF9C27B0); // Purple
-      case EmotionType.fearful:
-        return const Color(0xFF607D8B); // Blue Grey
-      case EmotionType.disgusted:
-        return const Color(0xFF4CAF50); // Green
       case EmotionType.neutral:
         return TColors.grey;
     }
